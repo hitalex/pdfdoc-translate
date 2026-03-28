@@ -3,7 +3,7 @@
 版面分析：使用 PaddleOCR PPStructure 检测文字/标题/表格/图片区域
 并推断双栏布局的阅读顺序
 
-兼容 paddleocr 2.8.x (PPStructure)
+兼容 paddleocr 2.10.x (PPStructure)
 """
 
 from typing import List, Optional
@@ -140,13 +140,13 @@ def _interleave_columns(full: List[Region], left: List[Region],
 
 
 class LayoutAnalyzer:
-    """使用 PaddleOCR PPStructure 分析 PDF 页面图像的版面（paddleocr 2.8.x）"""
+    """使用 PaddleOCR PPStructure 分析 PDF 页面图像的版面（paddleocr 2.10.x）"""
 
     def __init__(self, lang: str = "en", use_gpu: bool = False):
         if not PADDLE_AVAILABLE:
             raise ImportError(
                 "请安装 PaddleOCR:\n"
-                "  pip install paddlepaddle==2.6.2 paddleocr==2.8.1"
+                "  pip install paddlepaddle==3.0.0 paddleocr==2.10.0"
             )
         self.lang = lang
         print("  初始化 PaddleOCR PPStructure...")
@@ -188,7 +188,7 @@ class LayoutAnalyzer:
         """
         将 PPStructure 的单个结果转换为 Region。
 
-        PPStructure 2.x 返回格式:
+        PPStructure 2.10.x 返回格式:
         {
             'type': 'text' | 'title' | 'table' | 'figure' | ...,
             'bbox': [x1, y1, x2, y2],
