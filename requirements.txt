@@ -1,0 +1,34 @@
+# ── 核心依赖（已在 Python 3.11 + Windows 验证）────────────────────────────────
+
+# PDF 处理
+PyMuPDF>=1.24.0          # PDF → 图像 (import fitz)
+
+# 版面分析 & OCR（固定版本，paddle 3.x 在 Windows 有兼容问题）
+paddlepaddle==2.6.2
+paddleocr==2.8.1
+opencv-contrib-python>=4.8.0
+Pillow>=10.0.0
+numpy>=1.24.0
+
+# 翻译 API
+anthropic>=0.30.0        # Anthropic Claude API
+openai>=1.30.0           # OpenAI 兼容接口（可选）
+
+# 输出: DOCX
+python-docx>=1.1.0
+lxml>=4.9.0
+
+# 输出: PDF
+reportlab>=4.2.0
+
+# 工具
+tqdm>=4.66.0
+beautifulsoup4>=4.12.0   # 解析 PPStructure 表格 HTML
+python-dotenv>=0.21.0    # 从 .env 文件加载 API Key
+
+# ── 安装说明 ─────────────────────────────────────────────────────────────────
+# pip install paddlepaddle==2.6.2 paddleocr==2.8.1
+# pip install PyMuPDF anthropic reportlab python-docx beautifulsoup4
+#
+# 如需 GPU:
+# pip install paddlepaddle-gpu==2.6.2 -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html

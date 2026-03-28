@@ -1,0 +1,34 @@
+# API 密钥（绝对不提交）
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
+
+# 输出文件
+*.translated.docx
+*.translated.pdf
+
+# PaddleOCR 推理缓存
+inference/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 本地工具配置
+.claude/
+.skills/
+
+# 源文档及中间产物
+*.pdf
+*.docx
+images/
+pdf_extracted.txt
