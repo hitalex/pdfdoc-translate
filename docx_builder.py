@@ -260,7 +260,6 @@ class DocxBuilder:
     def _add_page_break(doc: Document):
         p = doc.add_paragraph()
         run = p.add_run()
-        run.add_break(WD_ALIGN_PARAGRAPH.LEFT)
         from docx.oxml.ns import qn as _qn
         from docx.oxml import OxmlElement as _el
         br = _el("w:br")

@@ -91,6 +91,7 @@ def main():
         config.api_provider = args.provider
     if args.model:
         config.model = args.model
+
     config.source_lang = args.source_lang
     config.target_lang = args.target_lang
     config.target_lang_name = args.target_lang_name

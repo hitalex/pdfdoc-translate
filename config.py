@@ -3,15 +3,14 @@
 全局配置：API、模型、语言、字体、输出选项
 """
 
-import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
-# 自动加载项目根目录的 .env 文件（不覆盖已有的环境变量）
-load_dotenv(Path(__file__).parent / ".env", override=False)
+# 只从 .env 文件读取配置，不读取机器环境变量
+_env = dotenv_values(Path(__file__).parent / ".env")
 
 
 @dataclass
@@ -21,7 +20,7 @@ class Config:
     #   "anthropic" : 使用 Anthropic 原生 SDK (api_url 可不填)
     #   "openai"    : 使用 OpenAI 兼容接口 (需填 api_url)
     api_provider: str = "anthropic"
-    api_key: str = field(default_factory=lambda: os.environ.get("ANTHROPIC_API_KEY", ""))
+    api_key: str = field(default_factory=lambda: _env.get("ANTHROPIC_API_KEY", ""))
     api_url: Optional[str] = None          # OpenAI兼容时填: e.g. "https://api.openai.com/v1"
     model: str = "claude-sonnet-4-6"       # 或 "gpt-4o" 等
 
@@ -53,13 +52,13 @@ class Config:
 
     @classmethod
     def from_env(cls) -> "Config":
-        """从环境变量读取配置"""
+        """从 .env 文件读取配置"""
         cfg = cls()
-        if os.environ.get("OPENAI_API_KEY") and not os.environ.get("ANTHROPIC_API_KEY"):
+        if _env.get("OPENAI_API_KEY") and not _env.get("ANTHROPIC_API_KEY"):
             cfg.api_provider = "openai"
-            cfg.api_key = os.environ["OPENAI_API_KEY"]
-            cfg.api_url = os.environ.get("OPENAI_API_URL", "https://api.openai.com/v1")
-            cfg.model = os.environ.get("LLM_MODEL", "gpt-4o")
+            cfg.api_key = _env["OPENAI_API_KEY"]
+            cfg.api_url = _env.get("OPENAI_API_URL", "https://api.openai.com/v1")
+            cfg.model = _env.get("LLM_MODEL", "gpt-4o")
         else:
-            cfg.api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+            cfg.api_key = _env.get("ANTHROPIC_API_KEY", "")
         return cfg
