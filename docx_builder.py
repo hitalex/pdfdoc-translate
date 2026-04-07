@@ -75,39 +75,44 @@ class DocxBuilder:
     def _build_two_column_page(self, doc: Document, layout: PageLayout,
                                 regions: List[Region]):
         """
-        双栏页面构建：
-        - 全宽区域（full）直接添加到文档
-        - 左右栏内容成对放入一个 2 列布局表的行
+        双栏页面构建（按阅读顺序处理）：
+        - 遇到全宽区域时先刷新当前双栏组，再直接添加
+        - 连续的左/右栏区域积攒后一起放入 2 列布局表
         """
-        full_regions = [r for r in regions if r.column == "full"]
-        left_regions  = [r for r in regions if r.column == "left"]
-        right_regions = [r for r in regions if r.column == "right"]
+        pending_left: List[Region] = []
+        pending_right: List[Region] = []
 
-        # 全宽内容先输出
-        for r in full_regions:
-            self._add_region_single(doc, r, CONTENT_W)
-
-        # 若有双栏内容，用 2 列布局表
-        if left_regions or right_regions:
-            max_rows = max(len(left_regions), len(right_regions))
+        def flush_columns():
+            if not (pending_left or pending_right):
+                return
+            max_rows = max(len(pending_left), len(pending_right))
             tbl = doc.add_table(rows=max_rows, cols=2)
             tbl.alignment = WD_TABLE_ALIGNMENT.LEFT
             _set_table_no_border(tbl)
             _set_col_width(tbl, 0, HALF_COL)
             _set_col_width(tbl, 1, HALF_COL)
-
             for row_idx in range(max_rows):
                 row = tbl.rows[row_idx]
-                if row_idx < len(left_regions):
-                    cell = row.cells[0]
-                    self._fill_cell(cell, left_regions[row_idx])
-                if row_idx < len(right_regions):
-                    cell = row.cells[1]
-                    self._fill_cell(cell, right_regions[row_idx])
+                if row_idx < len(pending_left):
+                    self._fill_cell(row.cells[0], pending_left[row_idx], doc)
+                if row_idx < len(pending_right):
+                    self._fill_cell(row.cells[1], pending_right[row_idx], doc)
+            pending_left.clear()
+            pending_right.clear()
 
-    def _fill_cell(self, cell, region: Region):
+        for r in regions:
+            if r.column == "full":
+                flush_columns()
+                self._add_region_single(doc, r, CONTENT_W)
+            elif r.column == "left":
+                pending_left.append(r)
+            else:
+                pending_right.append(r)
+
+        flush_columns()
+
+    def _fill_cell(self, cell, region: Region, doc: Document = None):
         """向表格单元格中填充区域内容"""
-        # 清空默认空段落
         for p in cell.paragraphs:
             p.clear()
 
@@ -119,7 +124,13 @@ class DocxBuilder:
         else:
             text = region.translated_text or region.text
             p = cell.paragraphs[0]
-            self._set_para_text(p, text, is_title=(region.type == TYPE_TITLE))
+            heading_level = region.heading_level
+            if heading_level in (1, 2, 3) and doc is not None:
+                p.style = doc.styles[f'Heading {heading_level}']
+                run = p.add_run(text)
+                _set_east_asia_font(run, "黑体")
+            else:
+                self._set_para_text(p, text, is_title=(region.type == TYPE_TITLE))
 
     # ── 单栏区域添加 ─────────────────────────────────────────────────────────
 
@@ -132,21 +143,25 @@ class DocxBuilder:
         elif region.type == TYPE_TABLE:
             text = region.translated_text or region.text
             if text:
-                self._add_paragraph(doc, text, is_title=False)
+                self._add_paragraph(doc, text, region=region)
             self._add_docx_table(doc, region)
-
-        elif region.type == TYPE_TITLE:
-            text = region.translated_text or region.text
-            self._add_paragraph(doc, text, is_title=True)
 
         else:
             text = region.translated_text or region.text
             if text:
-                self._add_paragraph(doc, text, is_title=False)
+                self._add_paragraph(doc, text, region=region)
 
-    def _add_paragraph(self, doc: Document, text: str, is_title: bool = False):
-        p = doc.add_paragraph()
-        self._set_para_text(p, text, is_title=is_title)
+    def _add_paragraph(self, doc: Document, text: str, region=None):
+        heading_level = getattr(region, 'heading_level', 0) if region else 0
+        is_title = (region.type == TYPE_TITLE) if region else False
+
+        if heading_level in (1, 2, 3):
+            p = doc.add_paragraph(style=f'Heading {heading_level}')
+            run = p.add_run(text)
+            _set_east_asia_font(run, "黑体")
+        else:
+            p = doc.add_paragraph()
+            self._set_para_text(p, text, is_title=is_title)
         return p
 
     def _set_para_text(self, p, text: str, is_title: bool = False):

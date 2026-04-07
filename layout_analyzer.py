@@ -1,17 +1,32 @@
 # -*- coding: utf-8 -*-
 """
-版面分析：使用 PaddleOCR PPStructure 检测文字/标题/表格/图片区域
+版面分析：使用 PaddleOCR PPStructureV3 检测文字/标题/表格/图片区域
 并推断双栏布局的阅读顺序
 
-兼容 paddleocr 2.10.x (PPStructure)
+兼容 paddleocr 3.4.x (PPStructureV3)
 """
 
+import os
 from typing import List, Optional
 import numpy as np
 from PIL import Image
 
 try:
-    from paddleocr import PPStructure
+    from paddleocr import PPStructureV3
+    from paddlex.inference.models.common.static_infer import PaddleInfer as _PaddleInfer
+
+    # Windows 上 PaddlePaddle 3.x 的 PIR 新执行器（new IR）与 oneDNN 存在兼容问题：
+    # paddlex 默认 enable_new_ir=True，PIR executor 内部仍调用 oneDNN 指令，
+    # 导致 ConvertPirAttribute2RuntimeAttribute not support DoubleAttribute 错误。
+    # Patch Python 层 PaddleInfer._create，在创建 Config 前强制关闭 PIR。
+    _orig_create = _PaddleInfer._create
+
+    def _patched_create(self):
+        self._option.enable_new_ir = False
+        return _orig_create(self)
+
+    _PaddleInfer._create = _patched_create
+
     PADDLE_AVAILABLE = True
 except ImportError:
     PADDLE_AVAILABLE = False
@@ -28,14 +43,24 @@ TYPE_UNKNOWN = "unknown"
 
 TRANSLATABLE_TYPES = {TYPE_TEXT, TYPE_TITLE, TYPE_TABLE, TYPE_FIG_CAP, TYPE_TBL_CAP}
 
-# PPStructure type 字段 → 内部类型 映射
+# PPStructureV3 block_label → 内部类型 映射
 _TYPE_MAP = {
     "text":            TYPE_TEXT,
     "title":           TYPE_TITLE,
     "table":           TYPE_TABLE,
     "figure":          TYPE_FIGURE,
+    "image":           TYPE_FIGURE,
     "figure_caption":  TYPE_FIG_CAP,
     "table_caption":   TYPE_TBL_CAP,
+    "abstract":        TYPE_TEXT,
+    "references":      TYPE_TEXT,
+    "footnote":        TYPE_TEXT,
+    "formula":         TYPE_TEXT,
+    "seal":            TYPE_TEXT,
+    "footer":          TYPE_TEXT,
+    "header":          TYPE_TEXT,
+    "chart":           TYPE_FIGURE,
+    "page_number":     TYPE_UNKNOWN,
 }
 
 
@@ -43,13 +68,16 @@ class Region:
     """一个版面区域"""
     def __init__(self, region_type: str, bbox: List[int], text: str = "",
                  table_html: str = "", image: Optional[Image.Image] = None,
-                 column: str = "full"):
+                 column: str = "full", heading_level: int = 0,
+                 block_order: int = 0):
         self.type = region_type
-        self.bbox = bbox                   # [x1, y1, x2, y2]
+        self.bbox = bbox                    # [x1, y1, x2, y2]
         self.text = text
         self.table_html = table_html
         self.image = image
-        self.column = column               # "left" | "right" | "full"
+        self.column = column                # "left" | "right" | "full"
+        self.heading_level = heading_level  # 0=非标题, 1/2/3=H1/H2/H3
+        self.block_order = block_order      # PPStructureV3 给出的阅读顺序
         self.translated_text = ""
         self.translated_html = ""
 
@@ -75,7 +103,8 @@ class Region:
 
     def __repr__(self):
         return (f"Region(type={self.type}, bbox={self.bbox}, "
-                f"column={self.column}, text={self.text[:30]!r})")
+                f"column={self.column}, heading={self.heading_level}, "
+                f"text={self.text[:30]!r})")
 
 
 class PageLayout:
@@ -88,74 +117,25 @@ class PageLayout:
         self.is_two_column = False
 
     def get_sorted_regions(self) -> List[Region]:
-        """按阅读顺序返回区域（左栏→右栏，栏内从上到下）"""
-        if not self.is_two_column:
-            return sorted(self.regions, key=lambda r: r.bbox[1])
-
-        full  = [r for r in self.regions if r.column == "full"]
-        left  = sorted([r for r in self.regions if r.column == "left"],
-                       key=lambda r: r.bbox[1])
-        right = sorted([r for r in self.regions if r.column == "right"],
-                       key=lambda r: r.bbox[1])
-
-        return _interleave_columns(full, left, right)
-
-
-def _interleave_columns(full: List[Region], left: List[Region],
-                        right: List[Region]) -> List[Region]:
-    """将全宽区域与双栏区域按垂直位置交织排列"""
-    all_items = (
-        [(r, "full")  for r in full]  +
-        [(r, "left")  for r in left]  +
-        [(r, "right") for r in right]
-    )
-    all_items.sort(key=lambda x: x[0].bbox[1])
-
-    result = []
-    i = 0
-    while i < len(all_items):
-        r, col = all_items[i]
-        if col == "full":
-            result.append(r)
-            i += 1
-        else:
-            band_bottom = r.bbox[3]
-            band_left  = [r] if col == "left"  else []
-            band_right = [r] if col == "right" else []
-            j = i + 1
-            while j < len(all_items):
-                nr, ncol = all_items[j]
-                if ncol == "full":
-                    break
-                if nr.bbox[1] < band_bottom + 50:
-                    band_bottom = max(band_bottom, nr.bbox[3])
-                    (band_left if ncol == "left" else band_right).append(nr)
-                    j += 1
-                else:
-                    break
-            result.extend(sorted(band_left,  key=lambda r: r.bbox[1]))
-            result.extend(sorted(band_right, key=lambda r: r.bbox[1]))
-            i = j
-    return result
+        """按阅读顺序返回区域（优先使用 PPStructureV3 提供的 block_order）"""
+        return sorted(self.regions, key=lambda r: (r.block_order, r.bbox[1]))
 
 
 class LayoutAnalyzer:
-    """使用 PaddleOCR PPStructure 分析 PDF 页面图像的版面（paddleocr 2.10.x）"""
+    """使用 PaddleOCR PPStructureV3 分析 PDF 页面图像的版面（paddleocr 3.4.x）"""
 
     def __init__(self, lang: str = "en", use_gpu: bool = False):
         if not PADDLE_AVAILABLE:
             raise ImportError(
                 "请安装 PaddleOCR:\n"
-                "  pip install paddlepaddle==3.0.0 paddleocr==2.10.0"
+                "  pip install paddlepaddle==3.3.1 paddleocr==3.4.0"
             )
         self.lang = lang
-        print("  初始化 PaddleOCR PPStructure...")
-        self._engine = PPStructure(
-            table=True,
-            ocr=True,
-            lang=lang,
-            use_gpu=use_gpu,
-            show_log=False,
+        device = "gpu:0" if use_gpu else "cpu"
+        print("  初始化 PaddleOCR PPStructureV3...")
+        self._engine = PPStructureV3(
+            use_table_recognition=True,
+            device=device,
         )
 
     def analyze(self, pages: List[dict]) -> List[PageLayout]:
@@ -173,114 +153,130 @@ class LayoutAnalyzer:
 
         layout = PageLayout(page['page_num'], w, h)
 
-        # PPStructure.__call__(img) 返回 list of dict
-        raw_results = self._engine(img_np)
+        # PPStructureV3.predict() 返回 list of dict，每个 dict 对应一张图
+        results = list(self._engine.predict(img_np))
+        if not results:
+            return layout
 
-        for item in raw_results:
-            region = self._parse_item(item, img)
+        res = results[0]
+        for block in res.get('parsing_res_list', []):
+            region = self._parse_block(block, img, h)
             if region:
                 layout.regions.append(region)
 
         self._assign_columns(layout)
         return layout
 
-    def _parse_item(self, item: dict, page_img: Image.Image) -> Optional[Region]:
+    def _parse_block(self, block: dict, page_img: Image.Image,
+                     page_height: int) -> Optional[Region]:
         """
-        将 PPStructure 的单个结果转换为 Region。
+        将 PPStructureV3 parsing_res_list 中的单个块转换为 Region。
 
-        PPStructure 2.10.x 返回格式:
+        PPStructureV3 3.4.x 块格式:
         {
-            'type': 'text' | 'title' | 'table' | 'figure' | ...,
-            'bbox': [x1, y1, x2, y2],
-            'img':  numpy array,
-            'res':  list of ocr dicts (text/title) 或 HTML str (table)
+            'block_label':   str,       # 区域类型
+            'block_bbox':    [x1,y1,x2,y2],
+            'block_content': str|dict,  # 文字内容
+            'block_html':    str,       # 仅表格：HTML
+            'block_order':   int,       # 阅读顺序
         }
         """
-        raw_type = str(item.get("type", "unknown")).lower()
-        bbox_raw = item.get("bbox", None)
+        raw_label = str(block.get("block_label", "unknown")).lower()
+        bbox_raw  = block.get("block_bbox", None)
 
         if bbox_raw is None:
             return None
 
         try:
-            x1, y1, x2, y2 = int(bbox_raw[0]), int(bbox_raw[1]), \
-                              int(bbox_raw[2]), int(bbox_raw[3])
+            x1, y1, x2, y2 = (int(bbox_raw[0]), int(bbox_raw[1]),
+                               int(bbox_raw[2]), int(bbox_raw[3]))
         except (TypeError, IndexError, ValueError):
             return None
 
-        # 裁切区域图像
         try:
             region_img = page_img.crop((x1, y1, x2, y2))
         except Exception:
             region_img = None
 
-        region_type = _TYPE_MAP.get(raw_type, TYPE_TEXT)
-        res = item.get("res", None)
+        region_type = _TYPE_MAP.get(raw_label, TYPE_TEXT)
+        block_order = int(block.get("block_order", 0))
+        content     = block.get("block_content", "")
 
         if region_type == TYPE_TABLE:
-            html = self._extract_table_html(res)
+            html = block.get("block_html", "")
+            if not html and isinstance(content, str):
+                html = content
             return Region(region_type, [x1, y1, x2, y2],
-                          table_html=html, image=region_img)
+                          table_html=html, image=region_img,
+                          block_order=block_order)
 
         elif region_type == TYPE_FIGURE:
-            return Region(region_type, [x1, y1, x2, y2], image=region_img)
+            return Region(region_type, [x1, y1, x2, y2],
+                          image=region_img, block_order=block_order)
 
         else:
-            text = self._extract_text(res)
+            text = self._extract_text(content)
+            heading_level = 0
+            if region_type == TYPE_TITLE:
+                heading_level = self._estimate_heading_level(
+                    y2 - y1, text, page_height
+                )
             return Region(region_type, [x1, y1, x2, y2],
-                          text=text, image=region_img)
+                          text=text, image=region_img,
+                          heading_level=heading_level,
+                          block_order=block_order)
 
     @staticmethod
-    def _extract_text(res) -> str:
-        """从 PPStructure OCR 结果列表中提取纯文本"""
-        if not res:
+    def _extract_text(content) -> str:
+        """从 block_content 提取纯文本"""
+        if not content:
             return ""
-        if isinstance(res, str):
-            return res
-        lines = []
-        for item in res:
-            if isinstance(item, dict):
-                t = item.get("text", "")
-                if t:
-                    lines.append(t)
-            elif isinstance(item, (list, tuple)):
-                # 格式: [[bbox_pts], [text, confidence]]
-                try:
-                    inner = item[1]
-                    if isinstance(inner, (list, tuple)):
-                        lines.append(str(inner[0]))
-                    else:
-                        lines.append(str(inner))
-                except (IndexError, TypeError):
-                    pass
-        return " ".join(lines)
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, dict):
+            return content.get("text", "").strip()
+        if isinstance(content, list):
+            parts = []
+            for item in content:
+                if isinstance(item, str):
+                    parts.append(item)
+                elif isinstance(item, dict):
+                    parts.append(item.get("text", ""))
+            return " ".join(p for p in parts if p).strip()
+        return str(content).strip()
 
     @staticmethod
-    def _extract_table_html(res) -> str:
-        """从 PPStructure 表格结果中提取 HTML"""
-        if not res:
-            return ""
-        if isinstance(res, str):
-            return res
-        if isinstance(res, dict):
-            return res.get("html", "") or res.get("pred_html", "")
-        # 某些版本返回包含 html 字段的 dict
-        if isinstance(res, list) and res:
-            first = res[0]
-            if isinstance(first, dict):
-                return first.get("html", "")
-        return ""
+    def _estimate_heading_level(bbox_height: int, text: str,
+                                page_height: int) -> int:
+        """
+        根据 bbox 行高与页面高度的比值推断标题层级（1/2/3）。
+        使用相对比值而非绝对像素，对不同 DPI 具有鲁棒性。
+
+        参考（A4 @ 200dpi，页面高 ≈ 2338px）：
+          H1: 行高 > 3.0%  → 约 20pt+
+          H2: 行高 > 1.8%  → 约 14pt+
+          H3: 其余 title 区域
+        """
+        line_count  = max(1, text.count('\n') + 1)
+        line_height = bbox_height / line_count
+        ratio       = line_height / page_height if page_height > 0 else 0
+        if ratio > 0.030:
+            return 1
+        elif ratio > 0.018:
+            return 2
+        else:
+            return 3
 
     @staticmethod
     def _assign_columns(layout: PageLayout):
-        """判断是否双栏，分配 column 属性"""
+        """判断是否双栏，为每个区域分配 column 属性"""
         if len(layout.regions) < 2:
             for r in layout.regions:
                 r.column = "full"
             return
 
         page_mid = layout.img_width / 2
-        centers = [r.center_x for r in layout.regions]
+        centers  = [r.center_x for r in layout.regions]
         has_left  = any(c < page_mid * 0.75 for c in centers)
         has_right = any(c > page_mid * 1.25 for c in centers)
 

@@ -3,9 +3,10 @@
 # PDF 处理
 PyMuPDF>=1.24.0          # PDF → 图像 (import fitz)
 
-# 版面分析 & OCR（paddlepaddle 3.x 仅提供 3.0.0+，2.x 已不再分发）
-paddlepaddle==3.0.0
-paddleocr==2.10.0
+# 版面分析 & OCR
+paddlepaddle==3.3.1
+paddleocr==3.4.0
+paddlex[ocr]==3.4.3
 opencv-contrib-python>=4.8.0
 Pillow>=10.0.0
 numpy>=1.24.0
@@ -27,8 +28,8 @@ beautifulsoup4>=4.12.0   # 解析 PPStructure 表格 HTML
 python-dotenv>=0.21.0    # 从 .env 文件加载 API Key
 
 # ── 安装说明 ─────────────────────────────────────────────────────────────────
-# pip install paddlepaddle==3.0.0 paddleocr==2.10.0
+# pip install paddlepaddle==3.3.1 paddleocr==3.4.0 "paddlex[ocr]==3.4.3"
 # pip install PyMuPDF anthropic reportlab python-docx beautifulsoup4
 #
 # 如需 GPU:
-# pip install paddlepaddle-gpu==2.6.2 -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html
+# pip install paddlepaddle-gpu==3.3.1 -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html

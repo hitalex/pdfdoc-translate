@@ -1,0 +1,33 @@
+PPStructure 解析报告  共 2 页，25 个区域
+================================================================================
+
+=== 第 1 页  (1653x2325px, 单栏) ===
+  01. [title          full  bbox=[235, 319, 698, 391]]  "Sample Document"
+  02. [text           full  bbox=[232, 416, 1431, 495]]  "This document was created using accessibility techniques for headings, lists, im"
+  03. [title          full  bbox=[233, 516, 409, 573]]  "Headings"
+  04. [text           full  bbox=[231, 593, 1377, 749]]  "There are eight section headings in this document. At the beginning, "Sample Doc"
+  05. [title          full  bbox=[233, 770, 315, 825]]  "Lists"
+  06. [text           full  bbox=[231, 846, 1411, 924]]  "The following outline of the sections of this document is an ordered (numbered) "
+  07. [text           full  bbox=[278, 948, 542, 1257]]  "1.  Headings 2.  Lists 3.  Links 4.  Images 5.  Tables Simple Tables Complex Tab"
+  08. [title          full  bbox=[230, 1272, 326, 1328]]  "Links"
+  09. [text           full  bbox=[228, 1351, 1277, 1428]]  "In web documents, links can point different locations on the page, different pag"
+  10. [text           full  bbox=[229, 1447, 412, 1487]]  "Top of this Page"
+  11. [text           full  bbox=[231, 1486, 439, 1527]]  "Top of this Page Sample Document"
+  12. [text           full  bbox=[230, 1525, 518, 1566]]  "Sample Document (docx)"
+  13. [title          full  bbox=[230, 1586, 365, 1638]]  "Images"
+  14. [text           full  bbox=[225, 1665, 1386, 1780]]  "Documents may contain images. For example, there is an image of the web. accessi"
+  15. [text           full  bbox=[514, 1800, 1316, 1837]]  "Alt text should communicate what an image means, not how it looks.."
+
+=== 第 2 页  (1653x2325px, 双栏) ===
+  01. [text           right bbox=[811, 302, 1439, 503]]  "Some images, such as charts or graphs, require long. descriptions, but not all d"
+  02. [title          left  bbox=[235, 564, 368, 622]]  "Tables"
+  03. [title          left  bbox=[235, 649, 448, 694]]  "Simple Tables"
+  04. [table          left  bbox=[233, 773, 725, 1082]]  (表格 6 行)
+  05. [title          left  bbox=[233, 1109, 473, 1155]]  "Complex Tables"
+  06. [text           full  bbox=[233, 1179, 1422, 1254]]  "The following is a complex table, using merged cells as headers for sections wit"
+  07. [table          full  bbox=[236, 1274, 1452, 1633]]  (表格 7 行)
+  08. [title          left  bbox=[234, 1660, 402, 1718]]  "Columns"
+  09. [text           left  bbox=[234, 1742, 797, 1981]]  "This is an example of columns. With columns, the page is split into two or more "
+  10. [text           right bbox=[885, 1748, 1442, 1982]]  "When columns are not created correctly, screen.  readers may run lines together,"
+
+================================================================================
