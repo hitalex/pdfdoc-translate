@@ -79,6 +79,10 @@ def parse_args():
         "--batch-size", type=int, default=20,
         help="翻译时每批段落数（默认: 20）",
     )
+    parser.add_argument(
+        "--verbose", action="store_true",
+        help="输出 DOCX 写入日志，便于核查哪些区域被跳过",
+    )
     return parser.parse_args()
 
 
@@ -122,10 +126,15 @@ def step1_ocr_to_docx(args, config, ocr_docx_path: Path):
     total_regions = sum(len(l.regions) for l in layouts)
     print(f"  共检测到 {total_regions} 个版面区域")
 
+    # 输出解析报告
+    report_path = ocr_docx_path.with_name(ocr_docx_path.stem + "_report.txt")
+    from layout_analyzer import dump_layout_report
+    dump_layout_report(layouts, str(report_path))
+
     print(f"\n【Step 1-C】重建原文 DOCX（跳过翻译）...")
     from docx_builder import DocxBuilder
     builder = DocxBuilder()
-    builder.build(layouts, str(ocr_docx_path))
+    builder.build(layouts, str(ocr_docx_path), verbose=args.verbose)
     print(f"  原文 DOCX 已保存: {ocr_docx_path}")
 
     return layouts  # 供调试或 step 2 直接复用（可选）

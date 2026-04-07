@@ -36,7 +36,11 @@ class DocxBuilder:
     def __init__(self):
         pass
 
-    def build(self, layouts: List[PageLayout], output_path: str):
+    def build(self, layouts: List[PageLayout], output_path: str,
+              verbose: bool = False):
+        self._verbose = verbose
+        self._write_log: list = []   # 记录每个区域的写入情况
+
         doc = Document()
         self._setup_page(doc)
 
@@ -47,6 +51,14 @@ class DocxBuilder:
 
         doc.save(output_path)
         print(f"  DOCX 已保存: {output_path}")
+
+        if verbose:
+            print("\n  ── DOCX 写入日志 ──")
+            for entry in self._write_log:
+                print(f"  {entry}")
+            written = sum(1 for e in self._write_log if not e.startswith("  SKIP"))
+            skipped = sum(1 for e in self._write_log if e.startswith("  SKIP"))
+            print(f"  共写入 {written} 个区域，跳过 {skipped} 个")
 
     # ── 页面设置 ─────────────────────────────────────────────────────────────
 
@@ -123,8 +135,19 @@ class DocxBuilder:
 
     # ── 单栏区域添加 ─────────────────────────────────────────────────────────
 
+    def _log(self, region: Region, action: str):
+        if hasattr(self, '_verbose') and self._verbose:
+            prefix = "  SKIP" if action.startswith("跳过") else "  WRITE"
+            self._write_log.append(
+                f"{prefix} [{region.type:<14}] {action}"
+            )
+
     def _add_region_single(self, doc: Document, region: Region, col_width):
         if region.type == TYPE_FIGURE:
+            if region.image is not None:
+                self._log(region, f"插入图片 {region.image.size}")
+            else:
+                self._log(region, "跳过图片（image=None）")
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             self._add_image_to_para(p, region, col_width)
@@ -133,16 +156,27 @@ class DocxBuilder:
             text = region.translated_text or region.text
             if text:
                 self._add_paragraph(doc, text, is_title=False)
-            self._add_docx_table(doc, region)
+            if region.table_html:
+                self._log(region, f"插入表格 HTML({len(region.table_html)}字符)")
+                self._add_docx_table(doc, region)
+            else:
+                self._log(region, "跳过表格（table_html 为空）")
 
         elif region.type == TYPE_TITLE:
             text = region.translated_text or region.text
-            self._add_paragraph(doc, text, is_title=True)
+            if text:
+                self._log(region, f'写入标题: "{text[:60]}"')
+                self._add_paragraph(doc, text, is_title=True)
+            else:
+                self._log(region, "跳过标题（text 为空）")
 
         else:
             text = region.translated_text or region.text
             if text:
+                self._log(region, f'写入文本: "{text[:60]}"')
                 self._add_paragraph(doc, text, is_title=False)
+            else:
+                self._log(region, "跳过文本（text 为空）")
 
     def _add_paragraph(self, doc: Document, text: str, is_title: bool = False):
         p = doc.add_paragraph()

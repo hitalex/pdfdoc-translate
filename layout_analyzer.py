@@ -77,6 +77,20 @@ class Region:
         return (f"Region(type={self.type}, bbox={self.bbox}, "
                 f"column={self.column}, text={self.text[:30]!r})")
 
+    def summary(self) -> str:
+        """单行摘要，用于调试报告"""
+        if self.type == TYPE_TABLE:
+            from bs4 import BeautifulSoup
+            rows = len(BeautifulSoup(self.table_html, "html.parser").find_all("tr")) if self.table_html else 0
+            detail = f"(表格 {rows} 行)"
+        elif self.type == TYPE_FIGURE:
+            sz = f"{self.image.size[0]}x{self.image.size[1]}" if self.image else "无图"
+            detail = f"(图片 {sz})"
+        else:
+            preview = self.text.replace('\n', ' ')[:80]
+            detail = f'"{preview}"' if preview else "(空文本)"
+        return f"[{self.type:<14} {self.column:<5} bbox={self.bbox}]  {detail}"
+
 
 class PageLayout:
     """一页的版面分析结果"""
@@ -298,3 +312,29 @@ class LayoutAnalyzer:
                 r.column = "left"
             else:
                 r.column = "right"
+
+
+def dump_layout_report(layouts: List[PageLayout], txt_path: str):
+    """
+    将 PPStructure 解析结果输出为可读报告文件。
+    每行对应一个区域，按阅读顺序排列，便于与 DOCX 内容对照核查。
+    """
+    lines = []
+    total_regions = sum(len(l.regions) for l in layouts)
+    lines.append(f"PPStructure 解析报告  共 {len(layouts)} 页，{total_regions} 个区域")
+    lines.append("=" * 80)
+
+    for layout in layouts:
+        col_info = "双栏" if layout.is_two_column else "单栏"
+        lines.append(f"\n=== 第 {layout.page_num} 页  ({layout.img_width}x{layout.img_height}px, {col_info}) ===")
+        sorted_regions = layout.get_sorted_regions()
+        if not sorted_regions:
+            lines.append("  (无识别区域)")
+            continue
+        for i, r in enumerate(sorted_regions, 1):
+            lines.append(f"  {i:02d}. {r.summary()}")
+
+    lines.append("\n" + "=" * 80)
+    with open(txt_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines))
+    print(f"  解析报告已保存: {txt_path}")
